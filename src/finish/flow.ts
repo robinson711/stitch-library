@@ -123,6 +123,7 @@ export function openFinishFlow(opts: FinishOptions = {}): void {
     if (scr.closed) return;
     scr.show(
       ids.length ? question : 'Which chart is it?',
+      ids.length ? null : h('p', {}, question === 'Is it one of these?' ? 'Find it by name, or add it as a new chart.' : question.replace(/ Is it one of these\?$/, '')),
       h('div', { class: 'scr-pair' }, h('figure', {}, img(photoUrl, 'Your photo'), h('figcaption', {}, 'Your photo'))),
       ids.length ? list : null,
       h('div', {}, h('label', { for: 'fin-search', class: 'scr-label' }, 'Find it by name'), search),

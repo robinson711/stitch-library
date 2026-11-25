@@ -12,7 +12,7 @@ export const BACKUP_READY = true;
 
 /** Fills the "Photos" area of a chart page (progress and finished photos). */
 export async function renderPhotoSection(container: HTMLElement, chartId: string): Promise<void> {
-  await photoSection(container, chartId)();
+  photoSection(container, chartId);
 }
 
 /** A finished photo waiting for the new chart she chose to add from "I finished one". */

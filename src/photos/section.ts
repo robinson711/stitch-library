@@ -36,11 +36,15 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
     await draw();
   };
 
+  let drawing = 0;
   async function draw() {
-    urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
+    const mine = ++drawing;
+    const old = urls.splice(0);
     const chart = await port.getChart(chartId);
-    clear(section);
-    if (!chart) return;
+    if (!chart) {
+      clear(section);
+      return;
+    }
     const list = h('ul', { class: 'ph-grid' });
     for (const p of [...chart.photos].reverse()) {
       const f = await port.getFile(p.fileId);
@@ -55,7 +59,9 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
         ),
       ));
     }
-    section.append(
+    if (mine !== drawing) return; // a newer redraw has started
+    old.forEach((u) => URL.revokeObjectURL(u));
+    section.replaceChildren(
       h('h3', { id: `ph-h-${chartId}`, class: 'ph-title' }, 'Photos'),
       chart.photos.length ? list : h('p', { class: 'ph-empty' }, 'No photos yet. Add one as you stitch, or when it’s finished.'),
       button('Add a photo', () => add(chart)),
