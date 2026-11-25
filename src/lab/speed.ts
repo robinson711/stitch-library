@@ -153,6 +153,15 @@ async function run() {
   for (const [i, setup] of list.entries()) {
     say(`Working… test ${i + 1} of ${list.length}: ${setup.name}. Please keep this screen open.`);
     const { r, emb } = await measure(setup, pic, reference);
+    // If the very first set-up can't even start, the page is probably out of
+    // date (the test server was rebuilt): stop and ask for a reload.
+    if (i === 0 && !r.ok && /could not start/.test(r.error ?? '')) {
+      results.push(r);
+      box.value = report(results, head);
+      say('This page is out of date. Please reload it (pull down, or press Reload), then tap Start again.');
+      running = false;
+      return;
+    }
     // Agreement is measured against the first Standard result.
     if (!reference && emb && setup.dtype === 'q8') reference = emb;
     results.push(r);
