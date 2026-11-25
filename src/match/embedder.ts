@@ -37,7 +37,7 @@ export class Embedder {
           resolve();
         } else if (m.type === 'error') reject(new Error(m.message));
       };
-      e.worker.onerror = (ev) => reject(new Error(ev.message || 'The matching helper stopped.'));
+      e.worker.onerror = (ev) => reject(new Error(ev.message || 'The matching helper could not start. Please reload the page and try again.'));
       e.worker.postMessage({ type: 'init', base, dtype, device, ...more } satisfies EmbedRequest);
     });
     e.worker.onerror = (ev) => {

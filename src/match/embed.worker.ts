@@ -57,7 +57,10 @@ async function init(o: InitOptions) {
   // the runtime into a blob: URL, which the security policy (rightly) blocks
   // for helper threads; the service worker will do the offline caching.
   (env as { useWasmCache?: boolean }).useWasmCache = false;
-  const device: Device = o.device === 'auto' ? ((await hasWebGPU()) ? 'webgpu' : 'wasm') : o.device;
+  // 'auto' uses the graphics chip only for the Small model: the Standard (q8)
+  // model's integer maths isn't supported there and runs slower than on the
+  // processor (Mac Safari: 1.7 s vs 0.27 s with 4 threads).
+  const device: Device = o.device === 'auto' ? (dtype === 'q4f16' && (await hasWebGPU()) ? 'webgpu' : 'wasm') : o.device;
   const build: OrtBuild = !o.build || o.build === 'auto' ? (device === 'webgpu' ? 'asyncify' : 'plain') : o.build;
   const isolated = (self as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
   const threads = threadCount(o.threads, isolated, navigator.hardwareConcurrency);
