@@ -9,7 +9,8 @@ import { BackupError, validateLibrary } from '../src/backup/validate';
 import type { PortChart } from '../src/backup/port';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const jpg = (s: string) => ({ blob: new Blob([s], { type: 'image/jpeg' }), type: 'image/jpeg' });
+const jpgBytes = (s: string) => new Uint8Array([0xff, 0xd8, 0xff, ...new TextEncoder().encode(s)]);
+const jpg = (s: string) => ({ blob: new Blob([jpgBytes(s)], { type: 'image/jpeg' }), type: 'image/jpeg' });
 
 function chart(n: number, extra: Partial<PortChart> = {}): PortChart {
   return {
@@ -58,7 +59,7 @@ describe('backup round trip', () => {
     const plan = await prepareRestore(dest, read);
     await applyRestore(dest, read, plan);
     expect(await dest.listCharts()).toEqual(await src.listCharts());
-    expect(await (await dest.getFile(id(401)))!.blob.text()).toBe('photo1');
+    expect((await (await dest.getFile(id(401)))!.blob.text()).endsWith('photo1')).toBe(true);
     expect((await dest.getFile(id(201)))!.type).toBe('application/pdf');
   });
 
@@ -118,7 +119,7 @@ describe('bad backup files', () => {
     charts: [{ id: id(1), title: 'A', designer: '', craft: '', recognizedText: '', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', cover: `files/${id(101)}.jpg`, source: [], photos: [], ...chartOver }],
     ...over,
   });
-  const cover = { [`files/${id(101)}.jpg`]: 'img' };
+  const cover: Record<string, string | Uint8Array> = { [`files/${id(101)}.jpg`]: jpgBytes('img') };
 
   it('accepts a valid minimal backup', async () => {
     const r = await readBackup(await zipOf({ 'library.json': good(), ...cover }));
@@ -134,9 +135,10 @@ describe('bad backup files', () => {
     ['unsafe path', async () => zipOf({ 'library.json': good({}, { cover: '../../etc/x.jpg' }), ...cover }), /not safe/],
     ['missing picture', async () => zipOf({ 'library.json': good() }), /missing from the backup/],
     ['bad date', async () => zipOf({ 'library.json': good({}, { updatedAt: '2026-01-01' }), ...cover }), /not a valid date/],
+    ['renamed picture', async () => zipOf({ 'library.json': good(), [`files/${id(101)}.jpg`]: 'not really a jpeg' }), /damaged or is not a JPEG/],
     ['bad craft', async () => zipOf({ 'library.json': good({}, { craft: 'knitting' }), ...cover }), /unknown craft/],
     ['uppercase id', async () => zipOf({ 'library.json': good({}, { id: id(1).toUpperCase().replace('0000', 'ABCD') }), ...cover }), /invalid id/],
-    ['pdf as cover', async () => zipOf({ 'library.json': good({}, { cover: `files/${id(101)}.pdf` }), [`files/${id(101)}.pdf`]: 'x' }), /must be a JPEG/],
+    ['pdf as cover', async () => zipOf({ 'library.json': good({}, { cover: `files/${id(101)}.pdf` }), [`files/${id(101)}.pdf`]: '%PDF-1.7' }), /must be a JPEG/],
   ];
   for (const [name, make, msg] of cases) {
     it(`refuses: ${name}`, async () => {
@@ -155,7 +157,7 @@ describe('bad backup files', () => {
     const parts: Uint8Array[] = [];
     const z = new Zip((_, c) => parts.push(c));
     for (const [n, v] of Object.entries({ 'library.json': good(), ...cover, '__MACOSX/._library.json': 'junk' })) {
-      const e = new ZipPassThrough(n); z.add(e); e.push(strToU8(v), true);
+      const e = new ZipPassThrough(n); z.add(e); e.push(typeof v === 'string' ? strToU8(v) : v, true);
     }
     z.end();
     const r = await readBackup(new Blob(parts as BlobPart[]));

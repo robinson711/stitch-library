@@ -5,7 +5,7 @@
 // Updates: a new version downloads only files that changed, copies the rest
 // from the old version, and takes over the next time she leaves and returns.
 const VERSION = '__VERSION__';
-const FILES = __FILES__; // [path relative to this file, sha-256]
+const FILES = __FILES__; // [path relative to this file, sha-256, 1 if big]
 const PREFIX = 'stitch-app-';
 const CACHE = PREFIX + VERSION;
 const HASHES = '__hashes__';
@@ -29,30 +29,54 @@ async function oldCopies() {
   return found;
 }
 
-async function install() {
-  const cache = await caches.open(CACHE);
-  const old = await oldCopies();
-  const hashes = {};
-  let done = 0;
-  const queue = [...FILES];
+let done = 0;
+
+/** Puts files into the cache, copying unchanged ones from the old version. Returns how many failed. */
+async function fill(cache, list, old, workers) {
+  let failed = 0;
+  const queue = [...list];
   async function worker() {
     for (let item = queue.shift(); item; item = queue.shift()) {
       const [path, hash] = item;
       const url = scopeUrl(path);
-      hashes[url] = hash;
-      const have = await cache.match(url, { ignoreVary: true });
-      if (!have) {
-        const from = old.get(url + '|' + hash);
-        const res = (from && (await from.match(url, { ignoreVary: true }))) || (await fetch(url, { cache: 'reload' }));
-        if (!res.ok) throw new Error('Could not download ' + path);
-        await cache.put(url, res);
+      try {
+        if (!(await cache.match(url, { ignoreVary: true }))) {
+          const from = old && old.get(url + '|' + hash);
+          const res = (from && (await from.match(url, { ignoreVary: true }))) || (await fetch(url, { cache: 'reload' }));
+          if (!res.ok) throw new Error('Could not download ' + path);
+          await cache.put(url, res);
+        }
+        done++;
+        if (done % 5 === 0 || done === FILES.length) await tell({ type: 'stitch-offline-progress', done, total: FILES.length });
+      } catch (e) {
+        failed++;
+        if (!item[2]) throw e; // the app itself must be complete
       }
-      done++;
-      if (done % 5 === 0 || done === FILES.length) await tell({ type: 'stitch-offline-progress', done, total: FILES.length });
     }
   }
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  await Promise.all(Array.from({ length: workers }, worker));
+  return failed;
+}
+
+async function install() {
+  const cache = await caches.open(CACHE);
+  const old = await oldCopies();
+  done = 0;
+  const hashes = {};
+  for (const [path, hash] of FILES) hashes[scopeUrl(path)] = hash;
+  // 1. The app itself: small, all or nothing.
+  await fill(cache, FILES.filter((f) => !f[2]), old, 4);
   await cache.put(scopeUrl(HASHES), new Response(JSON.stringify(hashes), { headers: { 'content-type': 'application/json' } }));
+  // 2. Big files (model, text reader): one at a time. A failed download
+  //    doesn't stop set-up; it is tried again later.
+  await fill(cache, FILES.filter((f) => f[2]), old, 1);
+}
+
+/** Fetches big files that are still missing (after a broken download). */
+async function completeBigFiles() {
+  const cache = await caches.open(CACHE);
+  const failed = await fill(cache, FILES.filter((f) => f[2]), null, 1).catch(() => 1);
+  if (!failed) await tell({ type: 'stitch-offline-ready' });
 }
 
 self.addEventListener('install', (e) => {
@@ -63,12 +87,13 @@ self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     for (const name of await caches.keys()) if (name.startsWith(PREFIX) && name !== CACHE) await caches.delete(name);
     await self.clients.claim();
-    await tell({ type: 'stitch-offline-ready' });
+    await completeBigFiles();
   })());
 });
 
 self.addEventListener('message', (e) => {
   if (e.data === 'stitch-update-now') self.skipWaiting();
+  if (e.data === 'stitch-check-offline') e.waitUntil(completeBigFiles());
 });
 
 // GitHub Pages can't send these headers, so the worker adds them. They make
@@ -100,6 +125,10 @@ async function serve(req, url) {
   } else {
     const hit = await cache.match(req, { ignoreSearch: true, ignoreVary: true });
     if (hit) return hit;
+    const listed = FILES.some((f) => scopeUrl(f[0]) === url.origin + url.pathname);
+    const res = await fetch(req);
+    if (listed && res.ok && res.status === 200) cache.put(url.origin + url.pathname, res.clone()).catch(() => {});
+    return res;
   }
   return fetch(req);
 }

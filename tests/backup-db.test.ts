@@ -10,7 +10,7 @@ import type { ChartRecord } from '../src/db/types';
 describe('backup with the real phone storage', () => {
   it('round-trips charts, PDFs and photos between two libraries', async () => {
     const a = await openLibrary('bk-a');
-    const cover = { id: newId(), blob: new Blob(['cover'], { type: 'image/jpeg' }), type: 'image/jpeg' };
+    const cover = { id: newId(), blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 1])], { type: 'image/jpeg' }), type: 'image/jpeg' };
     const pdf = { id: newId(), blob: new Blob(['%PDF-1.7'], { type: 'application/pdf' }), type: 'application/pdf' };
     const now = nowStamp();
     const c: ChartRecord = {
@@ -19,7 +19,7 @@ describe('backup with the real phone storage', () => {
     };
     await saveNewChart(c, [cover, pdf], undefined, a);
     const portA = await libraryOn('bk-a');
-    const photoFile = { id: newId(), blob: new Blob(['done'], { type: 'image/jpeg' }), type: 'image/jpeg' };
+    const photoFile = { id: newId(), blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff, 2])], { type: 'image/jpeg' }), type: 'image/jpeg' };
     await portA.addPhoto(c.id, { id: newId(), fileId: photoFile.id, kind: 'finished', notes: '', createdAt: now }, photoFile);
 
     const backup = await readBackup((await writeBackup(portA)).blob);
