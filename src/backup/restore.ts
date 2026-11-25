@@ -1,6 +1,7 @@
 // Applies a validated backup: plans the merge, then writes everything in one
 // transaction through the storage layer. On any failure nothing changes.
 
+import { StorageError } from '../db/library';
 import { stamp } from './format';
 import { planMerge, type MergePlan } from './merge';
 import type { LibraryPort, PortFile } from './port';
@@ -21,8 +22,8 @@ export async function applyRestore(port: LibraryPort, backup: ReadBackup, plan: 
   try {
     await port.restoreBatch(plan.charts, files);
   } catch (e) {
-    const name = (e as Error)?.name;
-    if (name === 'QuotaExceededError') throw new BackupError('The phone is out of space, so nothing was restored. Your library is unchanged.');
+    if (e instanceof StorageError) throw new BackupError(e.message);
+    if ((e as Error)?.name === 'QuotaExceededError') throw new BackupError('The phone is out of space, so nothing was restored. Your library is unchanged.');
     throw new BackupError('Restoring stopped part way, so nothing was changed. Your library is as it was.');
   }
 }
