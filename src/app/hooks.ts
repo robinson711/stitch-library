@@ -21,3 +21,8 @@ export async function openFinishFlow(): Promise<void> {
 export async function openBackupMenu(): Promise<void> {
   await problem('Backing up is coming in a later update.');
 }
+
+/** Runs after a new chart is saved, before its page opens (matching set-up, "I finished one" follow-up). */
+export async function afterChartAdded(chartId: string): Promise<void> {
+  void chartId;
+}

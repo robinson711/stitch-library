@@ -12,6 +12,7 @@ import { jpegFile, thumbOf, STORE_SIZE } from './pictures';
 import { go, stillHere } from './nav';
 import { ask, blobUrl, filePicker, hideWorking, newScreen, nextFrame, notice, problem, showWorking, topBar, updateWorking, BASE } from './ui';
 import { canvasToJpeg } from '../image/load';
+import { afterChartAdded } from './hooks';
 
 /** Scanned PDF pages read after the cover. Each takes several seconds on the phone. */
 const SCANNED_PAGES_READ = 3;
@@ -182,6 +183,7 @@ async function review(d: Draft) {
       hideWorking();
       releaseCanvas(d.cover);
       void askToKeepStorage();
+      await afterChartAdded(chart.id);
       go({ name: 'chart', id: chart.id }, true);
       notice('Saved.');
     } catch (e) {
