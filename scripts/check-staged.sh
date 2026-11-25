@@ -7,7 +7,7 @@ files=$(git diff --cached --name-only --diff-filter=ACMR)
 for f in $files; do
   case "$f" in
     public/icons/*.png) ;;
-    testdata/*|private/*|public/models/*|public/ocr/*|public/ort/*|dist/*|node_modules/*)
+    testdata/*|private/*|public/models/*|public/ocr/*|public/ort/*|public/pdf/*|dist/*|node_modules/*)
       echo "Not allowed in git: $f"; bad=1 ;;
     *.jpg|*.jpeg|*.JPG|*.JPEG|*.heic|*.HEIC|*.heif|*.png|*.PNG|*.webp|*.pdf|*.PDF|*.zip|*.mov|*.MOV|*.onnx|*.traineddata*)
       echo "Not allowed in git (picture, chart, backup or model): $f"; bad=1 ;;

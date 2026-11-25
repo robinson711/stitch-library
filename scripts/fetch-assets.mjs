@@ -5,7 +5,7 @@
 //
 // Run with: npm run assets
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,17 @@ const copies = [
   // ONNX Runtime Web (MIT). The asyncify build runs both WebGPU and plain WebAssembly.
   ['onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs', 'ort/ort-wasm-simd-threaded.asyncify.mjs'],
   ['onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm', 'ort/ort-wasm-simd-threaded.asyncify.wasm'],
+  // PDF.js (Apache-2.0): background worker that opens PDFs.
+  ['pdfjs-dist/build/pdf.worker.min.mjs', 'pdf/pdf.worker.min.mjs'],
+];
+
+// PDF.js support files, loaded only when a PDF needs them: fonts, character
+// maps, image decoders and colour profiles. (QuickJS, for PDF scripts, is left out.)
+const copyDirs = [
+  ['pdfjs-dist/standard_fonts', 'pdf/standard_fonts/'],
+  ['pdfjs-dist/cmaps', 'pdf/cmaps/'],
+  ['pdfjs-dist/wasm', 'pdf/wasm/', (name) => !name.startsWith('quickjs')],
+  ['pdfjs-dist/iccs', 'pdf/iccs/'],
 ];
 
 // DINOv2-small (Meta, Apache-2.0), ONNX export by Xenova, pinned revision.
@@ -47,6 +58,14 @@ for (const [from, to] of copies) {
   await mkdir(dirname(dest), { recursive: true });
   await copyFile(join(nm, from), dest);
   console.log('copied ', to);
+}
+
+for (const [from, to, keep = () => true] of copyDirs) {
+  const dest = join(pub, to);
+  await mkdir(dest, { recursive: true });
+  const names = (await readdir(join(nm, from))).filter(keep);
+  for (const name of names) await copyFile(join(nm, from, name), join(dest, name));
+  console.log('copied ', to, `(${names.length} files)`);
 }
 
 for (const [file, hash] of downloads) {

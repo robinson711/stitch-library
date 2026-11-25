@@ -99,8 +99,8 @@ and obvious.
 1. **Matching and text test on iPhone Safari** with 10–20 real pairs of chart
    covers and finished pieces (kept out of git). Report how often the right
    chart is first and in the top three, text accuracy, speed and download
-   size. Recommend whether to continue. ← **current phase**
-2. Library, add chart, text reading, search.
+   size. Recommend whether to continue. (Done: 2-pair run, both right.)
+2. Library, add chart, text reading, search. ← **built, needs iPhone check**
 3. Project photos and "I finished one".
 4. Backup, restore, offline, accessibility, publish.
 
@@ -126,6 +126,7 @@ update, back up, restore, move to or from the iPhone app, and known limits.
 | Libraries for later phases | PDF.js (`pdfjs-dist` 6.x, Apache-2.0), `idb` (ISC), `fflate` for zip (MIT). |
 | Security policy | `<meta>` CSP added at build time: `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self' blob: data:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`. No inline styles or scripts in HTML. |
 | Runtime files | `npm run assets` copies library files from `node_modules` into `public/ocr`, `public/ort` and downloads model files into `public/models` with SHA-256 checks. These folders are git-ignored; CI must run `npm run assets` before building. |
+| Phase 2 choices | Text reading uses "auto" layout (8.6 s vs 51 s for "sparse" on the iPhone). Low-confidence noise lines are dropped (`src/ocr/clean.ts`). PDFs: stored text is used where present; only scanned pages are read from the picture (cover + up to 3 pages). Covers and pages stored as JPEG, longest side 2400 px; grid thumbnails 480 px. Search: every typed word must match the start of a word; words of 5+ letters forgive one wrong letter. Screens use hash addresses (`#/chart/<id>`). |
 | Phase 1 testing | Served over home Wi-Fi from the Mac (`vite preview --host`), not GitHub Pages. Plain http means no WebGPU on the iPhone, so speed is the slower processor path; accuracy results are still valid. |
 
 ## 9. Status (as of 2026-11-25)
@@ -143,7 +144,13 @@ update, back up, restore, move to or from the iPhone app, and known limits.
 ## 10. File map
 
 ```
-index.html                 placeholder home page (real app comes in Phase 2)
+index.html                 the app
+src/app/*                  app screens: home, add (crop, read, review), chart page, edit, viewer
+src/app/hooks.ts           where Phase 3/4 plug in (photos, I finished one, Backup)
+src/db/*                   IndexedDB storage, records shaped like the backup format
+src/search/search.ts       search (case and accents ignored)
+src/pdf/pdf.ts             PDF.js wrapper (files in public/pdf, copied by npm run assets)
+src/ocr/clean.ts           drops noise from read text
 lab.html                   Phase 1 test bench page
 vite.config.ts             build settings, CSP, drops duplicate ORT wasm
 scripts/fetch-assets.mjs   copies/downloads runtime files, checks hashes
