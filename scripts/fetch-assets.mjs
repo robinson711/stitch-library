@@ -72,9 +72,14 @@ for (const [from, to, keep = () => true] of copyDirs) {
   console.log('copied ', to, `(${names.length} files)`);
 }
 
+// Speed tests only (`npm run assets -- --test-models`): the full-precision
+// model (88 MB). Not precached by the service worker. The pinned revision makes
+// it immutable; its hash is printed, not checked, until it has been recorded.
+if (process.argv.includes('--test-models')) downloads.push(['onnx/model.onnx', null]);
+
 for (const [file, hash] of downloads) {
   const dest = join(pub, 'models', MODEL_REPO, file);
-  if (await exists(dest) && sha256(await readFile(dest)) === hash) {
+  if (await exists(dest) && (hash === null || sha256(await readFile(dest)) === hash)) {
     console.log('ok     ', file);
     continue;
   }
@@ -83,7 +88,8 @@ for (const [file, hash] of downloads) {
   if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const got = sha256(buf);
-  if (got !== hash) throw new Error(`Checksum mismatch for ${file}: ${got}`);
+  if (hash === null) console.log('sha256 ', file, got);
+  else if (got !== hash) throw new Error(`Checksum mismatch for ${file}: ${got}`);
   await mkdir(dirname(dest), { recursive: true });
   await writeFile(dest, buf);
   console.log('fetched', file, (buf.length / 1e6).toFixed(1), 'MB');

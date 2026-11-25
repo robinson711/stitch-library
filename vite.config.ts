@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { pwa } from './src/pwa/vite-plugin';
 import { defineConfig, type Plugin } from 'vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 // Content Security Policy: only this site may supply scripts, styles, images,
 // workers and data. GitHub Pages cannot send headers, so it goes in a <meta>
@@ -86,7 +87,9 @@ function speedReportInbox(): Plugin {
 export default defineConfig({
   // Relative paths: works under https://<user>.github.io/stitch-library/ and on a local test server.
   base: './',
-  plugins: [csp(), dropDuplicateOrtWasm(), speedReportInbox(), pwa()],
+  // HTTPS=1 npm run preview: self-signed HTTPS for testing on the iPhone over
+  // Wi-Fi (several cores and the graphics chip need HTTPS).
+  plugins: [csp(), dropDuplicateOrtWasm(), speedReportInbox(), pwa(), ...(process.env.HTTPS ? [basicSsl()] : [])],
   server: { headers: ISOLATION_HEADERS },
   // allowedHosts: lets an HTTPS tunnel (cloudflared quick tunnel) reach the
   // Mac's test server, so the iPhone can test with HTTPS (needed for several

@@ -9,7 +9,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
 
 // Not needed on the phone: the test bench and the smaller model only it uses.
-const skip = [/^sw\.js$/, /^asset-sizes\.json$/, /^(lab|speed)\.html$/, /^assets\/(lab|speed)-/, /model_q4f16\.onnx$/, /\.map$/, /(^|\/)\.DS_Store$/];
+const skip = [/^sw\.js$/, /^asset-sizes\.json$/, /^(lab|speed)\.html$/, /^assets\/(lab|speed)-/, /model_q4f16\.onnx$/, /\/model\.onnx$/, /\.map$/, /(^|\/)\.DS_Store$/];
 
 async function walk(dir) {
   const out = [];
