@@ -10,6 +10,8 @@ export interface Screen {
   /** Keeps blob: URLs alive until the screen closes. */
   url(blob: Blob): string;
   close(): void;
+  /** Changes the top-right button's words, e.g. to "Close" once something is saved. */
+  setCancelText(text: string): void;
   closed: boolean;
 }
 
@@ -33,6 +35,9 @@ export function openScreen(label: string, onClose?: () => void, cancelText = 'Ca
       const u = URL.createObjectURL(blob);
       urls.push(u);
       return u;
+    },
+    setCancelText(text) {
+      cancel.textContent = text;
     },
     close() {
       if (screen.closed) return;

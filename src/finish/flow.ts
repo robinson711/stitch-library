@@ -96,7 +96,7 @@ export function openFinishFlow(opts: FinishOptions = {}): void {
         h('figure', {}, img(src, `Cover of ${chartName(c)}`), h('figcaption', {}, 'Chart')),
       ),
       h('p', { class: 'scr-chart-title' }, chartName(c)),
-      c.designer ? h('p', { class: 'scr-muted' }, c.designer) : null,
+      c.designer ? h('p', { class: 'scr-muted scr-center' }, c.designer) : null,
       buttonRow(
         button('Yes, that’s it', () => confirm(chartId), 'primary'),
         button('No', () => others('Is it one of these?')),
@@ -185,6 +185,7 @@ export function openFinishFlow(opts: FinishOptions = {}): void {
   }
 
   function done(c: PortChart) {
+    scr.setCancelText('Close');
     scr.show(
       'Saved',
       h('p', {}, `Your photo is saved with “${chartName(c)}”. Well stitched!`),
