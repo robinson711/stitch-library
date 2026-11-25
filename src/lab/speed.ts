@@ -137,16 +137,50 @@ function report(results: Result[], head: string[]): string {
   return lines.join('\n');
 }
 
-async function send(text: string) {
+/** True when the Mac's test server received the report. */
+async function send(text: string): Promise<boolean> {
   try {
-    await fetch(new URL('__speed-report', BASE), { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
-  } catch { /* only the Mac's test server listens; fine elsewhere */ }
+    const r = await fetch(new URL('__speed-report', BASE), { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
+    return r.status === 204;
+  } catch { return false; } // only the Mac's test server listens
+}
+
+/**
+ * On the live site (GitHub Pages) several cores need the app's service worker,
+ * which adds the cross-origin isolation headers. Installs it (a one-time
+ * download of the app's files), then reloads once and starts the check.
+ */
+async function isolateFirst(): Promise<boolean> {
+  if (crossOriginIsolated || !isSecureContext || !('serviceWorker' in navigator) || location.hostname === 'localhost') return false;
+  try {
+    if (sessionStorage.getItem('stitch-speed-reloaded')) return false;
+  } catch { /* private mode: carry on */ }
+  try {
+    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const m = e.data as { type?: string; done?: number; total?: number };
+      if (m?.type === 'stitch-offline-progress' && m.total) say(`Getting ready (one time only)… ${Math.round((100 * (m.done ?? 0)) / m.total)}%`);
+    });
+    say('Getting ready (one time only)…');
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+        if (reg.active) resolve();
+      });
+    }
+    try { sessionStorage.setItem('stitch-speed-reloaded', '1'); } catch { /* fine */ }
+    location.replace(`${location.pathname}?run`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 let running = false;
 async function run() {
   if (running) return;
   running = true;
+  if (await isolateFirst()) return;
   clear(out);
   const isolated = crossOriginIsolated === true;
   const gpu = await webgpuAvailable();
@@ -162,6 +196,7 @@ async function run() {
   const results: Result[] = [];
   const box = h('textarea', { readonly: true, rows: 12, 'aria-label': 'Report text' });
   const pic = testPicture();
+  let sent = false;
   let reference: Embedding | null = null;
   out.append(h('h2', {}, 'Report'), box,
     h('button', { type: 'button', onclick: async () => {
@@ -184,9 +219,9 @@ async function run() {
     if (!reference && emb && setup.dtype === 'q8') reference = emb;
     results.push(r);
     box.value = report(results, head);
-    await send(box.value);
+    sent = await send(box.value);
   }
-  say('Done. Thank you! You can close this page.');
+  say(sent ? 'Done. Thank you! The results were sent. You can close this page.' : 'Done. Thank you! Tap “Copy report” below, then paste it into the chat.');
   running = false;
 }
 
