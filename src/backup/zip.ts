@@ -136,9 +136,20 @@ export async function readBackup(file: Blob): Promise<ReadBackup> {
   const library = validateLibrary(json, new Set(chunks.keys()));
   const files = new Map<string, Blob>();
   for (const [name, list] of chunks) {
-    files.set(name, new Blob(list as BlobPart[], { type: name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg' }));
+    const isPdf = name.endsWith('.pdf');
+    if (!looksRight(list, isPdf)) throw new BackupError(`The file ${name} in this backup is damaged or is not ${isPdf ? 'a PDF' : 'a JPEG picture'}.`);
+    files.set(name, new Blob(list as BlobPart[], { type: isPdf ? 'application/pdf' : 'image/jpeg' }));
   }
   return { library, files };
+}
+
+/** Checks the first bytes: JPEG starts FF D8 FF, PDF starts "%PDF". */
+function looksRight(parts: Uint8Array[], pdf: boolean): boolean {
+  const head = new Uint8Array(4);
+  let n = 0;
+  for (const p of parts) for (let i = 0; i < p.length && n < 4; i++) head[n++] = p[i];
+  if (pdf) return n >= 4 && head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46;
+  return n >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
 }
 
 function concat(parts: Uint8Array[]): Uint8Array {

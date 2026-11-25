@@ -28,7 +28,11 @@ async function start() {
   });
   try {
     const reg = await sw.register('./sw.js', { scope: './' });
-    if (reg.active && !reg.installing) set({ ready: true });
+    if (reg.active && !reg.installing) {
+      set({ ready: true });
+      // Finish any big file whose download was interrupted last time.
+      reg.active.postMessage('stitch-check-offline');
+    }
     // An update waits until she leaves the app, then switches over, so
     // nothing changes under her fingers.
     document.addEventListener('visibilitychange', () => {

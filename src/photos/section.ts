@@ -8,6 +8,7 @@ import { matchService } from '../match/service';
 import { button, buttonRow, errorText, openScreen, photoButton, working, type Screen } from '../overlay/screen';
 import { clear, h } from '../shared/dom';
 import { preparePhoto } from './prepare';
+import { forgetThumb, thumbFor } from './thumbs';
 import './photos.css';
 
 export interface PhotoSectionOptions {
@@ -47,13 +48,13 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
     }
     const list = h('ul', { class: 'ph-grid' });
     for (const p of [...chart.photos].reverse()) {
-      const f = await port.getFile(p.fileId);
-      if (!f) continue;
-      const u = URL.createObjectURL(f.blob);
+      const small = await thumbFor(p.fileId, async () => (await port.getFile(p.fileId))?.blob);
+      if (!small) continue;
+      const u = URL.createObjectURL(small);
       urls.push(u);
       const label = `${KIND_LABEL[p.kind]} photo${p.createdAt ? `, ${formatDay(p.createdAt)}` : ''}${p.notes ? `. ${p.notes}` : ''}`;
       list.append(h('li', {},
-        h('button', { type: 'button', class: 'ph-tile', 'aria-label': label, onclick: () => view(chart, p, f.blob) },
+        h('button', { type: 'button', class: 'ph-tile', 'aria-label': label, onclick: () => void open(chart, p) },
           h('img', { src: u, alt: '', loading: 'lazy' }),
           h('span', { class: `ph-badge ph-${p.kind}` }, KIND_LABEL[p.kind]),
         ),
@@ -90,6 +91,11 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
     pick();
   }
 
+  async function open(chart: PortChart, p: PortPhoto) {
+    const f = await port.getFile(p.fileId);
+    if (f) view(chart, p, f.blob);
+  }
+
   function view(chart: PortChart, p: PortPhoto, blob: Blob) {
     const scr = openScreen('Photo', undefined, 'Close');
     const show = () =>
@@ -117,6 +123,7 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
               buttonRow(
                 button('Delete', async () => {
                   await port.deletePhoto(chart.id, p.id);
+                  forgetThumb(p.fileId);
                   scr.close();
                   await changed();
                 }, 'danger'),
