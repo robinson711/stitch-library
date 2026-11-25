@@ -49,3 +49,10 @@ button.danger { background: var(--bad); border-color: var(--bad); font-weight: 6
 .scr-choice span { display: flex; flex-direction: column; }
 .scr-choice small { color: var(--muted); }
 .scr-label { font-weight: 600; display: block; margin-bottom: 0.35rem; }
+.scr-note { background: var(--ok); padding: 0.75rem 1rem; border-radius: var(--radius); display: flex; flex-direction: column; gap: 0.5rem; }
+.inst-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.inst-step { display: flex; gap: 0.75rem; align-items: flex-start; }
+.inst-num {
+  flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--on-accent); font-weight: 700;
+}

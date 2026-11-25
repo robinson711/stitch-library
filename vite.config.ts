@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { pwa } from './src/pwa/vite-plugin';
 import { defineConfig, type Plugin } from 'vite';
 
 // Content Security Policy: only this site may supply scripts, styles, images,
@@ -45,7 +46,7 @@ function dropDuplicateOrtWasm(): Plugin {
 export default defineConfig({
   // Relative paths: works under https://<user>.github.io/stitch-library/ and on a local test server.
   base: './',
-  plugins: [csp(), dropDuplicateOrtWasm()],
+  plugins: [csp(), dropDuplicateOrtWasm(), pwa()],
   build: {
     target: 'safari18',
     assetsInlineLimit: 0, // never inline files as data: URLs
