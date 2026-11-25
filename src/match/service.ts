@@ -84,6 +84,18 @@ export class MatchService {
     return this.syncing;
   }
 
+  /** Starts a quiet refresh only if some picture has no vectors yet (does not load the model otherwise). */
+  async refreshIfNeeded(): Promise<void> {
+    if (await this.missingCount()) await this.refresh();
+  }
+
+  private async missingCount(): Promise<number> {
+    const have = new Set((await this.store.all(MODEL_ID)).map((r) => r.key));
+    let n = 0;
+    for (const c of await this.port.listCharts()) for (const f of matchFiles(c)) if (!have.has(vectorKey(MODEL_ID, f))) n++;
+    return n;
+  }
+
   /**
    * Ranks every chart for her photo. `onPrep` reports progress when charts
    * still need preparing first (for example right after a restore).
@@ -118,10 +130,7 @@ export class MatchService {
 
   /** Computes vectors for pictures the cache doesn't have yet, without waiting for the background run. */
   private async catchUp(onPrep?: (done: number, total: number) => void) {
-    const missing = new Set<string>();
-    const have = new Set((await this.store.all(MODEL_ID)).map((r) => r.key));
-    for (const c of await this.port.listCharts()) for (const f of matchFiles(c)) if (!have.has(vectorKey(MODEL_ID, f))) missing.add(f);
-    if (!missing.size) return;
+    if (!(await this.missingCount())) return;
     this.busy--; // let the sync run now: her answer depends on it
     if (onPrep) this.listeners.add(onPrep);
     try {
