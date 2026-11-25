@@ -87,7 +87,10 @@ export default defineConfig({
   base: './',
   plugins: [csp(), dropDuplicateOrtWasm(), speedReportInbox()],
   server: { headers: ISOLATION_HEADERS },
-  preview: { headers: ISOLATION_HEADERS },
+  // allowedHosts: lets an HTTPS tunnel (cloudflared quick tunnel) reach the
+  // Mac's test server, so the iPhone can test with HTTPS (needed for several
+  // cores and the graphics chip).
+  preview: { headers: ISOLATION_HEADERS, allowedHosts: ['.trycloudflare.com'] },
   build: {
     target: 'safari18',
     assetsInlineLimit: 0, // never inline files as data: URLs
