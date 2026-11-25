@@ -36,15 +36,32 @@ async function start() {
     });
     let reloading = false;
     sw.addEventListener('controllerchange', () => {
-      if (!state.ready || reloading) return set({ ready: true });
+      const firstInstall = !state.ready;
+      set({ ready: true });
+      // First install: one quiet reload turns on multi-core matching
+      // (see "isolate" in sw.js). An update: reload to use the new version.
+      if (reloading || (firstInstall && window.crossOriginIsolated)) return;
       reloading = true;
-      if (document.visibilityState === 'hidden') location.reload();
-      else document.addEventListener('visibilitychange', () => location.reload(), { once: true });
+      reloadWhenSafe();
     });
     setInterval(() => reg.update().catch(() => {}), 6 * 60 * 60 * 1000);
   } catch {
     /* offline support is a bonus; the app still works */
   }
+}
+
+/** Reloads only when it can't interrupt her: while the app is in the background, or on the home screen with nothing open. */
+function reloadWhenSafe() {
+  const safe = () => document.visibilityState === 'hidden' || (/^#?\/?$/.test(location.hash) && !document.querySelector('dialog[open], .working'));
+  if (safe()) return location.reload();
+  const check = () => {
+    if (!safe()) return;
+    document.removeEventListener('visibilitychange', check);
+    window.removeEventListener('hashchange', check);
+    location.reload();
+  };
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('hashchange', check);
 }
 
 void start();

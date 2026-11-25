@@ -1,16 +1,33 @@
 // Runs the DINOv2-small image model in a background worker so the screen
 // stays responsive. Every file comes from this site; remote models are off.
 import { AutoModel, Tensor, env, type PreTrainedModel } from '@huggingface/transformers';
+import { threadCount } from './threads';
 
 export type Dtype = 'q8' | 'q4f16';
 export type Device = 'webgpu' | 'wasm';
+/** Which ONNX Runtime WebAssembly file to load. */
+export type OrtBuild = 'plain' | 'asyncify';
+
+export interface InitOptions {
+  base: string;
+  dtype: Dtype;
+  device: Device | 'auto';
+  /**
+   * 'auto' (default): the small plain build on the processor, the asyncify
+   * build only when the graphics chip is used (it needs it). On iOS 26 the
+   * asyncify build is far slower on the processor (WebKit bug 304810).
+   */
+  build?: OrtBuild | 'auto';
+  /** Processor threads. 0 or missing: as many as allowed (needs cross-origin isolation). */
+  threads?: number;
+}
 
 export type EmbedRequest =
-  | { type: 'init'; base: string; dtype: Dtype; device: Device | 'auto' }
+  | ({ type: 'init' } & InitOptions)
   | { type: 'embed'; id: number; pixels: Float32Array; count: number };
 
 export type EmbedResponse =
-  | { type: 'ready'; device: Device; loadMs: number }
+  | { type: 'ready'; device: Device; build: OrtBuild; threads: number; loadMs: number }
   | { type: 'result'; id: number; cls: Float32Array; mean: Float32Array; dim: number; ms: number }
   | { type: 'error'; id?: number; message: string };
 
@@ -31,22 +48,31 @@ async function hasWebGPU(): Promise<boolean> {
   }
 }
 
-async function init(base: string, dtype: Dtype, wanted: Device | 'auto') {
+async function init(o: InitOptions) {
+  const { base, dtype } = o;
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
   env.localModelPath = new URL('models/', base).href;
+  // Load runtime files straight from this site. The library's own cache turns
+  // the runtime into a blob: URL, which the security policy (rightly) blocks
+  // for helper threads; the service worker will do the offline caching.
+  (env as { useWasmCache?: boolean }).useWasmCache = false;
+  const device: Device = o.device === 'auto' ? ((await hasWebGPU()) ? 'webgpu' : 'wasm') : o.device;
+  const build: OrtBuild = !o.build || o.build === 'auto' ? (device === 'webgpu' ? 'asyncify' : 'plain') : o.build;
+  const isolated = (self as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
+  const threads = threadCount(o.threads, isolated, navigator.hardwareConcurrency);
   const ort = env.backends.onnx;
   if (ort.wasm) {
+    const file = build === 'plain' ? 'ort-wasm-simd-threaded' : 'ort-wasm-simd-threaded.asyncify';
     ort.wasm.wasmPaths = {
-      mjs: new URL('ort/ort-wasm-simd-threaded.asyncify.mjs', base).href,
-      wasm: new URL('ort/ort-wasm-simd-threaded.asyncify.wasm', base).href,
+      mjs: new URL(`ort/${file}.mjs`, base).href,
+      wasm: new URL(`ort/${file}.wasm`, base).href,
     };
-    ort.wasm.numThreads = 1; // GitHub Pages cannot enable cross-origin isolation
+    ort.wasm.numThreads = threads;
   }
-  const device: Device = wanted === 'auto' ? ((await hasWebGPU()) ? 'webgpu' : 'wasm') : wanted;
   const t0 = performance.now();
   model = await AutoModel.from_pretrained(MODEL, { dtype, device });
-  post({ type: 'ready', device, loadMs: performance.now() - t0 });
+  post({ type: 'ready', device, build, threads, loadMs: performance.now() - t0 });
 }
 
 function l2(rows: Float32Array, n: number, dim: number) {
@@ -83,7 +109,7 @@ async function embed(id: number, pixels: Float32Array, count: number) {
 self.onmessage = async (e: MessageEvent<EmbedRequest>) => {
   const msg = e.data;
   try {
-    if (msg.type === 'init') await init(msg.base, msg.dtype, msg.device);
+    if (msg.type === 'init') await init(msg);
     else await embed(msg.id, msg.pixels, msg.count);
   } catch (err) {
     post({ type: 'error', id: msg.type === 'embed' ? msg.id : undefined, message: String((err as Error)?.message ?? err) });

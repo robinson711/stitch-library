@@ -1,5 +1,5 @@
 // Main-thread side of the image model worker.
-import type { Device, Dtype, EmbedRequest, EmbedResponse } from './embed.worker';
+import type { Device, Dtype, EmbedRequest, EmbedResponse, InitOptions, OrtBuild } from './embed.worker';
 import { VIEW_NAMES, makeView, toPixelValues, type ViewName } from './views';
 
 export interface Embedding {
@@ -15,26 +15,30 @@ export class Embedder {
   private next = 1;
   private pending = new Map<number, { resolve: (r: EmbedResponse) => void; reject: (e: Error) => void }>();
   device: Device | null = null;
+  build: OrtBuild | null = null;
+  threads = 1;
   loadMs = 0;
 
   private constructor() {
     this.worker = new Worker(new URL('./embed.worker.ts', import.meta.url), { type: 'module' });
   }
 
-  static async create(base: string, dtype: Dtype, device: Device | 'auto'): Promise<Embedder> {
+  static async create(base: string, dtype: Dtype, device: Device | 'auto', more: Pick<InitOptions, 'build' | 'threads'> = {}): Promise<Embedder> {
     const e = new Embedder();
     await new Promise<void>((resolve, reject) => {
       e.worker.onmessage = (ev: MessageEvent<EmbedResponse>) => {
         const m = ev.data;
         if (m.type === 'ready') {
           e.device = m.device;
+          e.build = m.build;
+          e.threads = m.threads;
           e.loadMs = m.loadMs;
           e.worker.onmessage = (x) => e.onMessage(x.data);
           resolve();
         } else if (m.type === 'error') reject(new Error(m.message));
       };
       e.worker.onerror = (ev) => reject(new Error(ev.message || 'The matching helper stopped.'));
-      e.worker.postMessage({ type: 'init', base, dtype, device } satisfies EmbedRequest);
+      e.worker.postMessage({ type: 'init', base, dtype, device, ...more } satisfies EmbedRequest);
     });
     e.worker.onerror = (ev) => {
       for (const p of e.pending.values()) p.reject(new Error(ev.message || 'The matching helper stopped.'));
