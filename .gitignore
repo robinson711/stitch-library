@@ -8,6 +8,7 @@ coverage/
 public/models/
 public/ocr/
 public/ort/
+public/pdf/
 
 # Her photos, charts, test pairs and backups must never be committed
 testdata/
