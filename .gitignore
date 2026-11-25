@@ -1,0 +1,48 @@
+# Build output and tools
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Downloaded runtime files (fetched and checksum-verified by scripts/fetch-assets.mjs)
+public/models/
+public/ocr/
+public/ort/
+
+# Her photos, charts, test pairs and backups must never be committed
+testdata/
+private/
+StitchLibrary-*.zip
+*.zip
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.heic
+*.HEIC
+*.heif
+*.png
+*.PNG
+*.webp
+*.pdf
+*.PDF
+*.mov
+*.MOV
+# App icons are the only images allowed in git
+!public/icons/*.png
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Editors and macOS
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local tool settings (contain this Mac's paths)
+.claude/

@@ -1,0 +1,26 @@
+{
+  "name": "stitch-library",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A calm, private library of cross stitch, needlepoint and quilting charts. Runs entirely on the phone.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/fetch-assets.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/report-size.mjs",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "check-staged": "sh scripts/check-staged.sh"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "@tesseract.js-data/eng": "1.0.0",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.2"
+  }
+}
