@@ -8,14 +8,16 @@
   "scripts": {
     "assets": "node scripts/fetch-assets.mjs",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/report-size.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/make-sw.mjs && node scripts/report-size.mjs",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "check-staged": "sh scripts/check-staged.sh"
+    "check-staged": "sh scripts/check-staged.sh",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
     "@tesseract.js-data/eng": "1.0.0",
+    "fflate": "0.8.2",
     "idb": "8.0.4",
     "pdfjs-dist": "6.5.438",
     "tesseract.js": "7.0.0"

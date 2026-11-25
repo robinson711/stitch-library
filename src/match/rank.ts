@@ -45,10 +45,24 @@ export type Confidence = 'likely' | 'unsure' | 'none';
 export interface Thresholds {
   /** Below this the best match is not shown as "Is this the chart?"; search is offered instead. */
   minScore: number;
+  /** At or above this, with a clear lead, one quick view is enough (no need for the slower extra views). */
+  sureScore: number;
+  /** How far ahead of the second chart the best one must be to count as a clear lead. */
+  sureMargin: number;
 }
 
-/** Phase 1 measures real scores to set this. Until then, a cautious default. */
-export const DEFAULT_THRESHOLDS: Thresholds = { minScore: 0.35 };
+/**
+ * From the first iPhone run (CLS pooling, 3 views): right charts scored
+ * 0.64-0.75, wrong charts at most 0.55. Only 2 pairs, so these stay cautious
+ * and should be revisited once more real pairs have been tried.
+ */
+export const DEFAULT_THRESHOLDS: Thresholds = { minScore: 0.5, sureScore: 0.62, sureMargin: 0.08 };
+
+/** True when the best chart is clearly ahead, so extra views would not change the answer. */
+export function isClearWinner(ranked: Ranked[], t: Thresholds = DEFAULT_THRESHOLDS): boolean {
+  if (!ranked.length || ranked[0].score < t.sureScore) return false;
+  return ranked.length === 1 || ranked[0].score - ranked[1].score >= t.sureMargin;
+}
 
 export function confidence(ranked: Ranked[], t: Thresholds = DEFAULT_THRESHOLDS): Confidence {
   if (!ranked.length) return 'none';
