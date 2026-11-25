@@ -6,6 +6,7 @@ export const library: LibraryPort = {
   listCharts: () => db.listCharts(),
   getChart: (id) => db.getChart(id),
   getFile: (id) => db.getFile(id),
+  getThumb: (id) => db.getThumb(id),
   addPhoto: async (chartId, photo, file) => void (await db.addPhoto(chartId, photo, file)),
   updateChart: async (chart) => void (await db.updateChart(chart)),
   deletePhoto: async (chartId, photoId) => void (await db.deletePhoto(chartId, photoId)),

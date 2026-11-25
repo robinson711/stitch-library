@@ -39,6 +39,8 @@ export interface LibraryPort {
   listCharts(): Promise<PortChart[]>;
   getChart(id: string): Promise<PortChart | undefined>;
   getFile(id: string): Promise<PortFile | undefined>;
+  /** Small cover picture for lists, if one is stored. */
+  getThumb?(chartId: string): Promise<Blob | undefined>;
   /** Adds a photo and its file in one transaction and bumps the chart's updatedAt. */
   addPhoto(chartId: string, photo: PortPhoto, file: PortFile): Promise<void>;
   /** Saves a changed chart record (used for photo kind/note edits). Bumps updatedAt. */
