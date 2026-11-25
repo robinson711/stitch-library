@@ -41,22 +41,37 @@ async function webgpuAvailable(): Promise<boolean> {
   try { return !!(await gpu.requestAdapter()); } catch { return false; }
 }
 
-function setups(isolated: boolean, gpu: boolean): Setup[] {
+async function hasFullModel(): Promise<boolean> {
+  try {
+    const r = await fetch(new URL('models/Xenova/dinov2-small/onnx/model.onnx', BASE), { method: 'HEAD' });
+    return r.ok;
+  } catch { return false; }
+}
+
+function setups(isolated: boolean, gpu: boolean, full: boolean): Setup[] {
   const list: Setup[] = [
-    { name: 'Processor, lighter engine, Standard', device: 'wasm', dtype: 'q8', build: 'plain', threads: 1 },
+    { name: 'Processor, Standard, 1 core', device: 'wasm', dtype: 'q8', build: 'plain', threads: 1 },
   ];
+  if (full) list.push({ name: 'Processor, Full, 1 core', device: 'wasm', dtype: 'fp32', build: 'plain', threads: 1 });
   if (isolated) {
-    list.push({ name: 'Processor, lighter engine, Standard, 2 cores', device: 'wasm', dtype: 'q8', build: 'plain', threads: 2 });
-    list.push({ name: 'Processor, lighter engine, Standard, 4 cores', device: 'wasm', dtype: 'q8', build: 'plain', threads: 4 });
+    list.push({ name: 'Processor, Standard, 4 cores', device: 'wasm', dtype: 'q8', build: 'plain', threads: 4 });
+    if (full) list.push({ name: 'Processor, Full, 4 cores', device: 'wasm', dtype: 'fp32', build: 'plain', threads: 4 });
   }
   if (gpu) {
+    if (full) list.push({ name: 'Graphics chip, Full', device: 'webgpu', dtype: 'fp32', build: 'asyncify', threads: 1 });
     list.push({ name: 'Graphics chip, Small', device: 'webgpu', dtype: 'q4f16', build: 'asyncify', threads: 1 });
-    list.push({ name: 'Graphics chip, Standard', device: 'webgpu', dtype: 'q8', build: 'asyncify', threads: 1 });
   }
-  list.push({ name: 'Processor, lighter engine, Small', device: 'wasm', dtype: 'q4f16', build: 'plain', threads: isolated ? 4 : 1 });
-  // The Phase 1 set-up, last because it can be very slow on iOS 26.
-  list.push({ name: 'Before: processor, old engine, Standard', device: 'wasm', dtype: 'q8', build: 'asyncify', threads: 1 });
   return list;
+}
+
+/** Plain JavaScript arithmetic, to tell a slow phone (e.g. Low Power Mode) from a slow model. */
+function calibrate(): number {
+  const t0 = performance.now();
+  let x = 0.5;
+  for (let i = 0; i < 50_000_000; i++) x = x * 1.0000001 + 0.0000001;
+  const ms = performance.now() - t0;
+  if (x === 42) console.log(x); // keep the loop from being optimised away
+  return ms;
 }
 
 /** A made-up, detailed picture (stripes, blocks, circles), the same every time. */
@@ -95,13 +110,13 @@ async function measure(setup: Setup, pic: HTMLCanvasElement, reference: Embeddin
     const r: Result = { setup, ok: true, loadMs: e.loadMs, threads: e.threads };
     const first = await e.embed(pic);
     r.firstMs = first.ms;
-    // Repeat until three runs or 45 seconds, whichever comes first.
+    // Repeat until three runs or 30 seconds, whichever comes first.
     const runs: number[] = [];
     const t0 = performance.now();
-    while (runs.length < 3 && performance.now() - t0 < 45_000) runs.push((await e.embed(pic)).ms);
+    while (runs.length < 3 && performance.now() - t0 < 30_000) runs.push((await e.embed(pic)).ms);
     runs.sort((a, b) => a - b);
     r.runMs = runs[Math.floor(runs.length / 2)];
-    if (r.runMs < 15_000) r.oneViewMs = (await e.embed(pic, ['whole'])).ms;
+    r.oneViewMs = (await e.embed(pic, ['whole'])).ms;
     if (reference) r.agree = agreement(reference, first);
     return { r, emb: first };
   } catch (err) {
@@ -122,16 +137,50 @@ function report(results: Result[], head: string[]): string {
   return lines.join('\n');
 }
 
-async function send(text: string) {
+/** True when the Mac's test server received the report. */
+async function send(text: string): Promise<boolean> {
   try {
-    await fetch(new URL('__speed-report', BASE), { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
-  } catch { /* only the Mac's test server listens; fine elsewhere */ }
+    const r = await fetch(new URL('__speed-report', BASE), { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
+    return r.status === 204;
+  } catch { return false; } // only the Mac's test server listens
+}
+
+/**
+ * On the live site (GitHub Pages) several cores need the app's service worker,
+ * which adds the cross-origin isolation headers. Installs it (a one-time
+ * download of the app's files), then reloads once and starts the check.
+ */
+async function isolateFirst(): Promise<boolean> {
+  if (crossOriginIsolated || !isSecureContext || !('serviceWorker' in navigator) || location.hostname === 'localhost') return false;
+  try {
+    if (sessionStorage.getItem('stitch-speed-reloaded')) return false;
+  } catch { /* private mode: carry on */ }
+  try {
+    const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const m = e.data as { type?: string; done?: number; total?: number };
+      if (m?.type === 'stitch-offline-progress' && m.total) say(`Getting ready (one time only)… ${Math.round((100 * (m.done ?? 0)) / m.total)}%`);
+    });
+    say('Getting ready (one time only)…');
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+        if (reg.active) resolve();
+      });
+    }
+    try { sessionStorage.setItem('stitch-speed-reloaded', '1'); } catch { /* fine */ }
+    location.replace(`${location.pathname}?run`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 let running = false;
 async function run() {
   if (running) return;
   running = true;
+  if (await isolateFirst()) return;
   clear(out);
   const isolated = crossOriginIsolated === true;
   const gpu = await webgpuAvailable();
@@ -140,10 +189,14 @@ async function run() {
     `Secure (https): ${isSecureContext} · Several cores allowed: ${isolated} · Cores reported: ${navigator.hardwareConcurrency} · Graphics chip (WebGPU): ${gpu}`,
     `Standalone: ${matchMedia('(display-mode: standalone)').matches}`,
   ];
-  const list = setups(isolated, gpu);
+  const full = await hasFullModel();
+  say('Working… warming up');
+  head.push(`Plain arithmetic check: ${s(calibrate())}`);
+  const list = setups(isolated, gpu, full);
   const results: Result[] = [];
   const box = h('textarea', { readonly: true, rows: 12, 'aria-label': 'Report text' });
   const pic = testPicture();
+  let sent = false;
   let reference: Embedding | null = null;
   out.append(h('h2', {}, 'Report'), box,
     h('button', { type: 'button', onclick: async () => {
@@ -166,15 +219,15 @@ async function run() {
     if (!reference && emb && setup.dtype === 'q8') reference = emb;
     results.push(r);
     box.value = report(results, head);
-    await send(box.value);
+    sent = await send(box.value);
   }
-  say('Done. Thank you! You can close this page.');
+  say(sent ? 'Done. Thank you! The results were sent. You can close this page.' : 'Done. Thank you! Tap “Copy report” below, then paste it into the chat.');
   running = false;
 }
 
 app.append(
   h('h1', {}, 'Speed check'),
-  h('p', {}, 'This times picture matching on this phone in a few different ways. It uses a made-up picture, so you don’t need any photos. It takes about three minutes. Please keep the screen on and this page open until it says Done.'),
+  h('p', {}, 'This times picture matching on this phone in a few different ways. It uses a made-up picture, so you don’t need any photos. It takes about five minutes. Please keep the screen on and this page open until it says Done.'),
   h('button', { type: 'button', class: 'primary', onclick: run }, 'Start the speed check'),
   statusEl,
   out,

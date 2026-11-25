@@ -3,7 +3,8 @@
 import { AutoModel, Tensor, env, type PreTrainedModel } from '@huggingface/transformers';
 import { threadCount } from './threads';
 
-export type Dtype = 'q8' | 'q4f16';
+/** q8: Standard (24 MB). q4f16: Small (13 MB). fp32: full precision (88 MB, speed tests only). */
+export type Dtype = 'q8' | 'q4f16' | 'fp32';
 export type Device = 'webgpu' | 'wasm';
 /** Which ONNX Runtime WebAssembly file to load. */
 export type OrtBuild = 'plain' | 'asyncify';
@@ -57,10 +58,10 @@ async function init(o: InitOptions) {
   // the runtime into a blob: URL, which the security policy (rightly) blocks
   // for helper threads; the service worker will do the offline caching.
   (env as { useWasmCache?: boolean }).useWasmCache = false;
-  // 'auto' uses the graphics chip only for the Small model: the Standard (q8)
+  // 'auto' uses the graphics chip for every model except Standard (q8): the Standard (q8)
   // model's integer maths isn't supported there and runs slower than on the
   // processor (Mac Safari: 1.7 s vs 0.27 s with 4 threads).
-  const device: Device = o.device === 'auto' ? (dtype === 'q4f16' && (await hasWebGPU()) ? 'webgpu' : 'wasm') : o.device;
+  const device: Device = o.device === 'auto' ? (dtype !== 'q8' && (await hasWebGPU()) ? 'webgpu' : 'wasm') : o.device;
   const build: OrtBuild = !o.build || o.build === 'auto' ? (device === 'webgpu' ? 'asyncify' : 'plain') : o.build;
   const isolated = (self as { crossOriginIsolated?: boolean }).crossOriginIsolated === true;
   const threads = threadCount(o.threads, isolated, navigator.hardwareConcurrency);

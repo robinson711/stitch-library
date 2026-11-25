@@ -95,8 +95,17 @@ async function serve(req, url) {
   const cache = await caches.open(CACHE);
   if (req.mode === 'navigate') {
     const page = url.pathname.endsWith('/') ? scopeUrl('index.html') : url.href.split('#')[0].split('?')[0];
-    const hit = (await cache.match(page, { ignoreVary: true })) || (await cache.match(scopeUrl('index.html'), { ignoreVary: true }));
+    const hit = await cache.match(page, { ignoreVary: true });
     if (hit) return hit;
+    // Pages that aren't kept offline (the lab and speed check) come from the
+    // network; the home page is the fallback when there is no connection.
+    try {
+      return await fetch(req);
+    } catch (err) {
+      const home = await cache.match(scopeUrl('index.html'), { ignoreVary: true });
+      if (home) return home;
+      throw err;
+    }
   } else {
     const hit = await cache.match(req, { ignoreSearch: true, ignoreVary: true });
     if (hit) return hit;
