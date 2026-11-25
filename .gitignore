@@ -46,3 +46,4 @@ StitchLibrary-*.zip
 
 # Local tool settings (contain this Mac's paths)
 .claude/
+speed-reports/

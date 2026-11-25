@@ -21,7 +21,11 @@ const copies = [
   ['tesseract.js-core/tesseract-core-lstm.wasm.js', 'ocr/tesseract-core-lstm.wasm.js'],
   // English language data, "best_int" (accurate, 2.8 MB). MIT / Apache-2.0.
   ['@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz', 'ocr/lang/eng.traineddata.gz'],
-  // ONNX Runtime Web (MIT). The asyncify build runs both WebGPU and plain WebAssembly.
+  // ONNX Runtime Web (MIT). The plain build (14 MB) runs on the processor; the
+  // asyncify build (27 MB) is needed for the graphics chip (WebGPU). On iOS 26
+  // the asyncify build is many times slower on the processor (WebKit bug 304810).
+  ['onnxruntime-web/dist/ort-wasm-simd-threaded.mjs', 'ort/ort-wasm-simd-threaded.mjs'],
+  ['onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', 'ort/ort-wasm-simd-threaded.wasm'],
   ['onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs', 'ort/ort-wasm-simd-threaded.asyncify.mjs'],
   ['onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm', 'ort/ort-wasm-simd-threaded.asyncify.wasm'],
 ];

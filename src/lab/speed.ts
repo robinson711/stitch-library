@@ -1,0 +1,173 @@
+// Speed check: times the image model in several set-ups on this phone, with a
+// made-up picture, so no photos are needed. One button, then a numbers-only
+// report. On the Mac's test server the report is also sent back to the Mac.
+import './lab.css';
+import { h, clear } from '../shared/dom';
+import { Embedder, type Embedding } from '../match/embedder';
+import { dot } from '../match/rank';
+import type { Device, Dtype, OrtBuild } from '../match/embed.worker';
+
+const BASE = new URL('./', location.href).href;
+
+interface Setup {
+  name: string;
+  device: Device;
+  dtype: Dtype;
+  build: OrtBuild;
+  threads: number;
+}
+
+interface Result {
+  setup: Setup;
+  ok: boolean;
+  error?: string;
+  loadMs?: number;
+  firstMs?: number;
+  runMs?: number;
+  oneViewMs?: number;
+  threads?: number;
+  agree?: number;
+}
+
+const app = document.getElementById('app')!;
+const statusEl = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
+const out = h('section', { class: 'results', 'aria-label': 'Results' });
+const say = (t: string) => (statusEl.textContent = t);
+const s = (ms?: number) => (ms === undefined ? '–' : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
+
+async function webgpuAvailable(): Promise<boolean> {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+  if (!gpu) return false;
+  try { return !!(await gpu.requestAdapter()); } catch { return false; }
+}
+
+function setups(isolated: boolean, gpu: boolean): Setup[] {
+  const list: Setup[] = [
+    { name: 'Processor, lighter engine, Standard', device: 'wasm', dtype: 'q8', build: 'plain', threads: 1 },
+  ];
+  if (isolated) {
+    list.push({ name: 'Processor, lighter engine, Standard, 2 cores', device: 'wasm', dtype: 'q8', build: 'plain', threads: 2 });
+    list.push({ name: 'Processor, lighter engine, Standard, 4 cores', device: 'wasm', dtype: 'q8', build: 'plain', threads: 4 });
+  }
+  if (gpu) {
+    list.push({ name: 'Graphics chip, Small', device: 'webgpu', dtype: 'q4f16', build: 'asyncify', threads: 1 });
+    list.push({ name: 'Graphics chip, Standard', device: 'webgpu', dtype: 'q8', build: 'asyncify', threads: 1 });
+  }
+  list.push({ name: 'Processor, lighter engine, Small', device: 'wasm', dtype: 'q4f16', build: 'plain', threads: isolated ? 4 : 1 });
+  // The Phase 1 set-up, last because it can be very slow on iOS 26.
+  list.push({ name: 'Before: processor, old engine, Standard', device: 'wasm', dtype: 'q8', build: 'asyncify', threads: 1 });
+  return list;
+}
+
+/** A made-up, detailed picture (stripes, blocks, circles), the same every time. */
+function testPicture(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 900;
+  c.height = 1200;
+  const g = c.getContext('2d')!;
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  g.fillStyle = '#f3efe4';
+  g.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 140; i++) {
+    g.fillStyle = `hsl(${Math.floor(rnd() * 360)} 60% ${30 + Math.floor(rnd() * 40)}%)`;
+    const x = rnd() * c.width, y = rnd() * c.height, r = 10 + rnd() * 90;
+    if (i % 3) g.fillRect(x, y, r, r * (0.5 + rnd()));
+    else { g.beginPath(); g.arc(x, y, r / 2, 0, Math.PI * 2); g.fill(); }
+  }
+  for (let y = 0; y < c.height; y += 24) {
+    g.fillStyle = y % 48 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.12)';
+    g.fillRect(0, y, c.width, 12);
+  }
+  return c;
+}
+
+function agreement(a: Embedding, b: Embedding): number {
+  let worst = 1;
+  for (let i = 0; i < a.cls.length; i++) worst = Math.min(worst, dot(a.cls[i], b.cls[i]));
+  return worst;
+}
+
+async function measure(setup: Setup, pic: HTMLCanvasElement, reference: Embedding | null): Promise<{ r: Result; emb?: Embedding }> {
+  let e: Embedder | null = null;
+  try {
+    e = await Embedder.create(BASE, setup.dtype, setup.device, { build: setup.build, threads: setup.threads });
+    const r: Result = { setup, ok: true, loadMs: e.loadMs, threads: e.threads };
+    const first = await e.embed(pic);
+    r.firstMs = first.ms;
+    // Repeat until three runs or 45 seconds, whichever comes first.
+    const runs: number[] = [];
+    const t0 = performance.now();
+    while (runs.length < 3 && performance.now() - t0 < 45_000) runs.push((await e.embed(pic)).ms);
+    runs.sort((a, b) => a - b);
+    r.runMs = runs[Math.floor(runs.length / 2)];
+    if (r.runMs < 15_000) r.oneViewMs = (await e.embed(pic, ['whole'])).ms;
+    if (reference) r.agree = agreement(reference, first);
+    return { r, emb: first };
+  } catch (err) {
+    return { r: { setup, ok: false, error: String((err as Error)?.message ?? err).slice(0, 160) } };
+  } finally {
+    e?.dispose();
+  }
+}
+
+function report(results: Result[], head: string[]): string {
+  const lines = [...head, 'SETUPS (matching one photo = 3 views)'];
+  for (const r of results) {
+    if (!r.ok) { lines.push(`${r.setup.name}: FAILED – ${r.error}`); continue; }
+    lines.push(`${r.setup.name}: one photo ${s(r.runMs)} (first ${s(r.firstMs)}), whole picture only ${s(r.oneViewMs)}, start-up ${s(r.loadMs)}, threads ${r.threads}${r.agree !== undefined ? `, agrees ${r.agree.toFixed(3)}` : ''}`);
+  }
+  const done = results.filter((r) => r.ok && r.runMs !== undefined).sort((a, b) => a.runMs! - b.runMs!);
+  if (done.length) lines.push(`FASTEST: ${done[0].setup.name}, ${s(done[0].runMs)} per photo`);
+  return lines.join('\n');
+}
+
+async function send(text: string) {
+  try {
+    await fetch(new URL('__speed-report', BASE), { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
+  } catch { /* only the Mac's test server listens; fine elsewhere */ }
+}
+
+let running = false;
+async function run() {
+  if (running) return;
+  running = true;
+  clear(out);
+  const isolated = crossOriginIsolated === true;
+  const gpu = await webgpuAvailable();
+  const head = [
+    `Device: ${navigator.userAgent}`,
+    `Secure (https): ${isSecureContext} · Several cores allowed: ${isolated} · Cores reported: ${navigator.hardwareConcurrency} · Graphics chip (WebGPU): ${gpu}`,
+    `Standalone: ${matchMedia('(display-mode: standalone)').matches}`,
+  ];
+  const list = setups(isolated, gpu);
+  const results: Result[] = [];
+  const box = h('textarea', { readonly: true, rows: 12, 'aria-label': 'Report text' });
+  const pic = testPicture();
+  let reference: Embedding | null = null;
+  out.append(h('h2', {}, 'Report'), box,
+    h('button', { type: 'button', onclick: async () => {
+      try { await navigator.clipboard.writeText(box.value); say('Report copied.'); }
+      catch { box.select(); say('Select the text above and copy it.'); }
+    } }, 'Copy report'));
+  for (const [i, setup] of list.entries()) {
+    say(`Working… test ${i + 1} of ${list.length}: ${setup.name}. Please keep this screen open.`);
+    const { r, emb } = await measure(setup, pic, reference);
+    // Agreement is measured against the first Standard result.
+    if (!reference && emb && setup.dtype === 'q8') reference = emb;
+    results.push(r);
+    box.value = report(results, head);
+    await send(box.value);
+  }
+  say('Done. Thank you! You can close this page.');
+  running = false;
+}
+
+app.append(
+  h('h1', {}, 'Speed check'),
+  h('p', {}, 'This times picture matching on this phone in a few different ways. It uses a made-up picture, so you don’t need any photos. It takes about three minutes. Please keep the screen on and this page open until it says Done.'),
+  h('button', { type: 'button', class: 'primary', onclick: run }, 'Start the speed check'),
+  statusEl,
+  out,
+);
+if (new URLSearchParams(location.search).has('run')) run();

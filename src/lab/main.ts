@@ -229,7 +229,7 @@ async function run() {
       log.push(`DOWNLOAD: ${sizes}; ${Object.entries(s.byGroup).map(([k, v]) => `${k} ${(v / 1e6).toFixed(1)} MB`).join(', ')}`);
     } catch { sizes = 'unknown'; }
     const speed = [
-      `Matching runs on: ${embedder.device === 'webgpu' ? 'graphics chip (WebGPU)' : 'processor (WebAssembly)'}, model ${dtype}`,
+      `Matching runs on: ${embedder.device === 'webgpu' ? 'graphics chip (WebGPU)' : 'processor (WebAssembly)'}, model ${dtype}, engine ${embedder.build}, threads ${embedder.threads}`,
       `Model start-up: ${ms(embedder.loadMs)} · Text reader start-up: ${ms(readerLoad)}`,
       `Matching one photo (3 views): ${ms(med(embTimes))} median, ${ms(Math.max(...embTimes))} slowest`,
       `Opening one photo: ${ms(med(decodeTimes))} median`,
