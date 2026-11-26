@@ -3,11 +3,12 @@
 
 import { library as defaultLibrary } from '../backup/adapter';
 import { newId, stamp } from '../backup/format';
-import type { LibraryPort, PhotoKind, PortChart, PortPhoto } from '../backup/port';
+import type { LibraryPort, PortChart, PortPhoto } from '../backup/port';
 import { matchService } from '../match/service';
 import { button, buttonRow, errorText, openScreen, photoButton, working, type Screen } from '../overlay/screen';
 import { clear, h } from '../shared/dom';
 import { preparePhoto } from './prepare';
+import { STATUSES, STATUS_HINT, STATUS_LABEL, fieldsFor, statusOf, withStatus, type PhotoStatus } from './status';
 import { forgetThumb, thumbFor } from './thumbs';
 import './photos.css';
 
@@ -17,7 +18,6 @@ export interface PhotoSectionOptions {
   onChange?: () => void;
 }
 
-const KIND_LABEL: Record<PhotoKind, string> = { progress: 'In progress', finished: 'Finished' };
 
 export function formatDay(s: string): string {
   const d = new Date(s);
@@ -52,11 +52,11 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
       if (!small) continue;
       const u = URL.createObjectURL(small);
       urls.push(u);
-      const label = `${KIND_LABEL[p.kind]} photo${p.createdAt ? `, ${formatDay(p.createdAt)}` : ''}${p.notes ? `. ${p.notes}` : ''}`;
+      const label = `${STATUS_LABEL[statusOf(p)]} photo${p.createdAt ? `, ${formatDay(p.createdAt)}` : ''}${p.notes ? `. ${p.notes}` : ''}`;
       list.append(h('li', {},
         h('button', { type: 'button', class: 'ph-tile', 'aria-label': label, onclick: () => void open(chart, p) },
           h('img', { src: u, alt: '', loading: 'lazy' }),
-          h('span', { class: `ph-badge ph-${p.kind}` }, KIND_LABEL[p.kind]),
+          h('span', { class: `ph-badge ph-${statusOf(p)}` }, STATUS_LABEL[statusOf(p)]),
         ),
       ));
     }
@@ -81,9 +81,9 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
       } catch (e) {
         return pick((e as Error)?.message || 'This picture could not be opened.');
       }
-      details(scr, blob, null, async (kind, notes) => {
+      details(scr, blob, null, async (status, notes) => {
         const fileId = newId();
-        await port.addPhoto(chart.id, { id: newId(), fileId, kind, notes, createdAt: stamp() }, { id: fileId, blob, type: 'image/jpeg' });
+        await port.addPhoto(chart.id, { id: newId(), fileId, ...fieldsFor(status), notes, createdAt: stamp() }, { id: fileId, blob, type: 'image/jpeg' });
         scr.close();
         await changed();
       });
@@ -100,18 +100,18 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
     const scr = openScreen('Photo', undefined, 'Close');
     const show = () =>
       scr.show(
-        KIND_LABEL[p.kind],
-        h('div', { class: 'ph-full' }, h('img', { src: scr.url(blob), alt: `${KIND_LABEL[p.kind]} photo of ${chart.title || 'this chart'}` })),
+        STATUS_LABEL[statusOf(p)],
+        h('div', { class: 'ph-full' }, h('img', { src: scr.url(blob), alt: `${STATUS_LABEL[statusOf(p)]} photo of ${chart.title || 'this chart'}` })),
         p.createdAt ? h('p', { class: 'scr-muted' }, formatDay(p.createdAt)) : null,
         p.notes ? h('p', {}, p.notes) : null,
         buttonRow(
           button('Change', () =>
-            details(scr, blob, p, async (kind, notes) => {
+            details(scr, blob, p, async (status, notes) => {
               const cur = await port.getChart(chart.id);
               if (!cur) return;
-              cur.photos = cur.photos.map((x) => (x.id === p.id ? { ...x, kind, notes } : x));
+              cur.photos = cur.photos.map((x) => (x.id === p.id ? { ...withStatus(x, status), notes } : x));
               await port.updateChart(cur);
-              p = { ...p, kind, notes };
+              p = { ...withStatus(p, status), notes };
               show();
               await changed();
             }),
@@ -140,21 +140,16 @@ export function renderPhotoSection(container: HTMLElement, chartId: string, opts
   return draw;
 }
 
-/** In progress or finished, plus a note. Shared by adding and changing a photo. */
-function details(scr: Screen, blob: Blob, p: PortPhoto | null, onSave: (kind: PhotoKind, notes: string) => Promise<void>) {
-  let kind: PhotoKind = p?.kind ?? 'progress';
-  const radios = (['progress', 'finished'] as PhotoKind[]).map((k) => {
-    const input = h('input', { type: 'radio', name: 'ph-kind', value: k, id: `ph-kind-${k}` });
-    input.checked = k === kind;
-    input.addEventListener('change', () => (kind = k));
-    return h('label', { class: 'ph-radio', for: `ph-kind-${k}` }, input, KIND_LABEL[k]);
-  });
+/** In Progress, Finished or Completed, plus a note. Shared by adding and changing a photo. */
+function details(scr: Screen, blob: Blob, p: PortPhoto | null, onSave: (status: PhotoStatus, notes: string) => Promise<void>) {
+  let status: PhotoStatus = p ? statusOf(p) : 'progress';
+  const radios = statusChoices(status, (s) => (status = s));
   const note = h('textarea', { id: 'ph-note', rows: 3 });
   note.value = p?.notes ?? '';
   const save = button('Save', async () => {
     save.disabled = true;
     try {
-      await onSave(kind, note.value.trim());
+      await onSave(status, note.value.trim());
     } catch (e) {
       save.disabled = false;
       save.before(errorText((e as Error)?.message || 'The photo could not be saved. Please try again.'));
@@ -167,4 +162,14 @@ function details(scr: Screen, blob: Blob, p: PortPhoto | null, onSave: (kind: Ph
     h('div', {}, h('label', { for: 'ph-note', class: 'scr-label' }, 'Note (optional)'), note),
     save,
   );
+}
+
+/** Three big radio buttons: In Progress / Finished / Completed, each with a short hint. */
+export function statusChoices(initial: PhotoStatus, onChange: (s: PhotoStatus) => void): HTMLElement[] {
+  return STATUSES.map((st) => {
+    const input = h('input', { type: 'radio', name: 'ph-kind', value: st, id: `ph-kind-${st}` });
+    input.checked = st === initial;
+    input.addEventListener('change', () => onChange(st));
+    return h('label', { class: 'ph-radio', for: `ph-kind-${st}` }, input, h('span', {}, STATUS_LABEL[st], h('small', {}, STATUS_HINT[st])));
+  });
 }

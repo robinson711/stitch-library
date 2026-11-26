@@ -9,6 +9,8 @@ export interface BackupPhoto {
   id: string;
   file: string;
   kind: PhotoKind;
+  /** Optional addition: "completed" (only with kind "finished"). Readers that don't know it ignore it. */
+  stage?: 'completed';
   notes: string;
   createdAt: string;
 }

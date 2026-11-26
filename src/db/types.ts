@@ -12,6 +12,8 @@ export interface PhotoRecord {
   /** Key in the "files" store (a JPEG). */
   fileId: string;
   kind: PhotoKind;
+  /** "completed" = framed or made up (kind is then "finished"). */
+  stage?: 'completed';
   notes: string;
   createdAt: Stamp;
 }

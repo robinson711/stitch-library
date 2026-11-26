@@ -9,6 +9,8 @@ export interface PortPhoto {
   id: string;
   fileId: string;
   kind: PhotoKind;
+  /** "completed" = framed or made up. Only with kind "finished". */
+  stage?: 'completed';
   notes: string;
   /** UTC 'YYYY-MM-DDTHH:MM:SSZ' */
   createdAt: string;

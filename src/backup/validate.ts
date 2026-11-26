@@ -76,13 +76,16 @@ export function validateLibrary(json: unknown, files: Set<string>): BackupLibrar
       if (photoIds.has(p.id)) fail(`${pw} appears twice.`);
       photoIds.add(p.id);
       if (typeof p.kind !== 'string' || !KINDS.has(p.kind)) fail(`${pw} is neither progress nor finished.`);
-      return {
+      const photo: BackupPhoto = {
         id: p.id,
         file: needFile(p.file, pw, false),
         kind: p.kind as BackupPhoto['kind'],
         notes: text(p, 'notes', pw),
         createdAt: date(p, 'createdAt', pw),
       };
+      // Unknown or out-of-place stages are ignored rather than refused.
+      if (p.stage === 'completed' && p.kind === 'finished') photo.stage = 'completed';
+      return photo;
     });
     return {
       id: c.id,

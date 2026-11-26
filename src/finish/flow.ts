@@ -12,6 +12,8 @@ import type { LibraryPort, PortChart } from '../backup/port';
 import { matchService, type MatchResult, type MatchService } from '../match/service';
 import { button, buttonRow, errorText, openScreen, photoButton, working } from '../overlay/screen';
 import { preparePhoto } from '../photos/prepare';
+import { statusChoices } from '../photos/section';
+import { fieldsFor, type PhotoStatus } from '../photos/status';
 import { h } from '../shared/dom';
 import { chartName, filterCharts, nextChoices } from './pick';
 
@@ -156,10 +158,12 @@ export function openFinishFlow(opts: FinishOptions = {}): void {
     const c = charts.get(chartId)!;
     const src = await cover(c);
     const note = h('textarea', { id: 'fin-note', rows: 3 });
+    let status: PhotoStatus = 'finished';
+    const choices = statusChoices(status, (st) => (status = st)).slice(1); // Finished or Completed
     const save1 = button('Save', async () => {
       save1.disabled = true;
       try {
-        await save(chartId, photo!, note.value.trim(), result?.query ?? []);
+        await save(chartId, photo!, note.value.trim(), result?.query ?? [], status);
         done(c);
       } catch (e) {
         save1.disabled = false;
@@ -173,15 +177,15 @@ export function openFinishFlow(opts: FinishOptions = {}): void {
         h('figure', {}, img(photoUrl, 'Your photo'), h('figcaption', {}, 'Your photo')),
         h('figure', {}, img(src, `Cover of ${chartName(c)}`), h('figcaption', {}, 'Chart')),
       ),
-      h('p', {}, 'Your photo will be saved to this chart as a finished piece.'),
+      h('fieldset', { class: 'ph-kinds' }, h('legend', { class: 'scr-label' }, 'This piece is'), ...choices),
       h('div', {}, h('label', { for: 'fin-note', class: 'scr-label' }, 'Note (optional)'), note),
       buttonRow(save1, button('Back', () => others('Is it one of these?'), 'quiet')),
     );
   }
 
-  async function save(chartId: string, blob: Blob, notes: string, query: Float32Array[]) {
+  async function save(chartId: string, blob: Blob, notes: string, query: Float32Array[], status: PhotoStatus = 'finished') {
     const fileId = newId();
-    await port.addPhoto(chartId, { id: newId(), fileId, kind: 'finished', notes, createdAt: stamp() }, { id: fileId, blob, type: 'image/jpeg' });
+    await port.addPhoto(chartId, { id: newId(), fileId, ...fieldsFor(status), notes, createdAt: stamp() }, { id: fileId, blob, type: 'image/jpeg' });
     if (query.length) await match.remember(chartId, fileId, query);
   }
 

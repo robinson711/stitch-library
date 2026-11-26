@@ -15,7 +15,9 @@ export interface MergePlan {
 const fileId = (path: string) => parsePath(path)!.id;
 
 function toPhoto(p: BackupChart['photos'][number]): PortPhoto {
-  return { id: p.id, fileId: fileId(p.file), kind: p.kind, notes: p.notes, createdAt: p.createdAt };
+  const out: PortPhoto = { id: p.id, fileId: fileId(p.file), kind: p.kind, notes: p.notes, createdAt: p.createdAt };
+  if (p.stage) out.stage = p.stage;
+  return out;
 }
 
 export function fromBackup(c: BackupChart): PortChart {
