@@ -18,7 +18,14 @@ export function toBackupChart(c: PortChart, typeOf: (fileId: string) => string):
     updatedAt: c.updatedAt,
     cover: pathFor(c.coverFileId, 'image/jpeg'),
     source: c.sourceFileIds.map((id) => pathFor(id, typeOf(id))),
-    photos: c.photos.map((p) => ({ id: p.id, file: pathFor(p.fileId, 'image/jpeg'), kind: p.kind, notes: p.notes, createdAt: p.createdAt })),
+    photos: c.photos.map((p) => ({
+      id: p.id,
+      file: pathFor(p.fileId, 'image/jpeg'),
+      kind: p.kind,
+      ...(p.kind === 'finished' && p.stage === 'completed' ? { stage: 'completed' as const } : {}),
+      notes: p.notes,
+      createdAt: p.createdAt,
+    })),
   };
 }
 
